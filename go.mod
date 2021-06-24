@@ -2,6 +2,8 @@ module github.com/gballet/go-verkle
 
 go 1.15
 
+replace github.com/protolambda/go-kzg => /home/vagrant/projects/go-kzg
+
 require (
 	github.com/ethereum/go-ethereum v1.9.25
 	github.com/herumi/bls-eth-go-binary v0.0.0-20210520070601-31246bfa8ac4 // indirect

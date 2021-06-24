@@ -29,9 +29,11 @@ import (
 	"crypto/sha256"
 	"math/big"
 
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/protolambda/go-kzg"
 	"github.com/protolambda/go-kzg/bls"
+    "fmt"
 )
 
 func calcR(cs []*bls.G1Point, indices []*bls.Fr, ys []*bls.Fr, modulus *big.Int) bls.Fr {
@@ -180,9 +182,92 @@ func MakeVerkleProofOneLeaf(root VerkleNode, key []byte) (d *bls.G1Point, y *bls
 	return
 }
 
+// Check a proof for a KZG commitment for an evaluation f(x) = y
+func CheckProofSingle(ks *kzg.KZGSettings, commitment *bls.G1Point, proof *bls.G1Point, x *bls.Fr, y *bls.Fr) bool {
+    // Verify the pairing equation
+    var xG2 bls.G2Point
+    bls.MulG2(&xG2, &bls.GenG2, x)
+    fmt.Println(bls.StrG2(&xG2))
+    var sMinusX bls.G2Point
+    bls.SubG2(&sMinusX, &ks.SecretG2[1], &xG2)
+
+    fmt.Println(bls.StrG2(&ks.SecretG2[1]))
+    //fmt.Println(bls.StrG2(&sMinusX))
+    /*
+    fmt.Println(bls.StrG2(&ks.SecretG2[1]))
+    fmt.Println(bls.StrG2(&xG2))
+    fmt.Println(bls.HexFr(x))
+    */
+    fmt.Println("fin")
+
+    var yG1 bls.G1Point
+    bls.MulG1(&yG1, &bls.GenG1, y)
+    var commitmentMinusY bls.G1Point
+    bls.SubG1(&commitmentMinusY, commitment, &yG1)
+
+    // This trick may be applied in the BLS-lib specific code:
+    //
+    // e([commitment - y], [1]) = e([proof],  [s - x])
+    //    equivalent to
+    // e([commitment - y]^(-1), [1]) * e([proof],  [s - x]) = 1_T
+    //
+    return bls.PairingsVerify(&commitmentMinusY, &bls.GenG2, proof, &sMinusX)
+}
+
+
 func VerifyVerkleProof(ks *kzg.KZGSettings, d, sigma *bls.G1Point, y *bls.Fr, commitments []*bls.G1Point, zis, yis []*bls.Fr, tc *TreeConfig) bool {
 	r := calcR(commitments, zis, yis, tc.modulus)
 	t := calcT(&r, d, tc.modulus)
+
+    // output proof data
+
+    /*
+    fmt.Println("proof: ")
+    fmt.Println("D: ", bls.HexG1(d))
+    fmt.Println("sigma: ", bls.StrG1(sigma))
+    fmt.Println("y: ", bls.HexFr(y))
+
+    fmt.Println("commitments:")
+    for i := 0; i < len(commitments); i++ {
+        fmt.Println(bls.HexG1(commitments[i]))
+    }
+
+    fmt.Println("zis:")
+    fmt.Println("[")
+    for i := 0 ; i < len(zis); i++ {
+        fmt.Println(bls.HexFr(zis[i]), ",")
+    }
+    fmt.Println("[")
+
+    fmt.Println("yis:")
+    fmt.Println("[")
+    for i := 0 ; i < len(yis); i++ {
+        fmt.Println(bls.HexFr(yis[i]), ",")
+    }
+    fmt.Println("]")
+
+    fmt.Println("domain:")
+    fmt.Println("[")
+    for i := 0; i < len(tc.omegaIs); i++ {
+        fmt.Println(bls.HexFr(&tc.omegaIs[i]), ",")
+    }
+    fmt.Println("]")
+
+    fmt.Println("r: ")
+    fmt.Println(bls.HexFr(&r))
+    fmt.Println(bls.FrStr(&r))
+
+    fmt.Println("t: ")
+    fmt.Println(bls.HexFr(&t))
+
+    fmt.Println("done")
+    fmt.Println()
+    */
+
+    //fmt.Println(bls.HexG1(&bls.GenG1))
+
+    fmt.Println(bls.StrG2(&bls.GenG2))
+    fmt.Println("voila")
 
 	// Evaluate w = g₂(t) and E
 	g2 := make([]bls.Fr, len(commitments))
@@ -200,11 +285,14 @@ func VerifyVerkleProof(ks *kzg.KZGSettings, d, sigma *bls.G1Point, y *bls.Fr, co
 		// E
 		var eTmp bls.G1Point
 		bls.MulG1(&eTmp, commitments[i], &rDivZi)
+
 		bls.AddG1(&e, &e, &eTmp)
 
 		// rⁱ⁺¹ = r ⨯ rⁱ
 		bls.MulModFr(&powR, &powR, &r)
 	}
+    fmt.Println(bls.HexFr(y))
+
 	var g2t bls.Fr
 	bls.EvalPolyAt(&g2t, g2, &t)
 
@@ -220,10 +308,11 @@ func VerifyVerkleProof(ks *kzg.KZGSettings, d, sigma *bls.G1Point, y *bls.Fr, co
 	bls.MulG1(&final, d, &q)
 	bls.AddG1(&final, &final, &e)
 
+
 	// finalAt=y+w*q
 	var finalAt bls.Fr
 	bls.MulModFr(&finalAt, &q, &w)
 	bls.AddModFr(&finalAt, &finalAt, y)
 
-	return ks.CheckProofSingle(&final, sigma, &t, &finalAt)
+	return CheckProofSingle(ks, &final, sigma, &t, &finalAt)
 }
